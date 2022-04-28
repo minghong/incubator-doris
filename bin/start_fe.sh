@@ -35,7 +35,7 @@ eval set -- "$OPTS"
 RUN_DAEMON=0
 HELPER=
 IMAGE_PATH=
-IMAGE_TOOL=
+IMAGE_TOOL=0
 while true; do
     case "$1" in
     --daemon)
