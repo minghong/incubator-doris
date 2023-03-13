@@ -94,6 +94,15 @@ public class PushdownLimit implements RewriteRuleFactory {
                                     sort.child(0));
                             return topN;
                         }).toRule(RuleType.PUSH_LIMIT_INTO_SORT),
+                logicalLimit(logicalProject(logicalSort()))
+                        .then(limit -> {
+                            LogicalSort sort = limit.child().child();
+                            LogicalTopN topN = new LogicalTopN(sort.getOrderKeys(),
+                                    limit.getLimit(),
+                                    limit.getOffset(),
+                                    sort.child(0));
+                            return topN;
+                        }).toRule(RuleType.PUSH_LIMIT_INTO_SORT),
                 logicalLimit(logicalOneRowRelation())
                         .then(limit -> limit.getLimit() > 0 && limit.getOffset() == 0
                                 ? limit.child() : new LogicalEmptyRelation(limit.child().getOutput()))

@@ -139,6 +139,7 @@ import org.apache.doris.planner.SortNode;
 import org.apache.doris.planner.TableFunctionNode;
 import org.apache.doris.planner.UnionNode;
 import org.apache.doris.planner.external.ExternalFileScanNode;
+import org.apache.doris.qe.ConnectContext;
 import org.apache.doris.tablefunction.TableValuedFunctionIf;
 import org.apache.doris.thrift.TPartitionType;
 import org.apache.doris.thrift.TPushAggOp;
@@ -854,6 +855,7 @@ public class PhysicalPlanTranslator extends DefaultPlanVisitor<PlanFragment, Pla
             SortNode sortNode = translateSortNode(topN, inputFragment.getPlanRoot(), context);
             sortNode.setOffset(topN.getOffset());
             sortNode.setLimit(topN.getLimit());
+            checkAndSetTopnOpt(sortNode);
             addPlanRoot(currentFragment, sortNode, topN);
         } else {
             // For mergeSort, we need to push sortInfo to exchangeNode
@@ -874,6 +876,32 @@ public class PhysicalPlanTranslator extends DefaultPlanVisitor<PlanFragment, Pla
             exchangeNode.setOffset(topN.getOffset());
         }
         return currentFragment;
+    }
+
+    /**
+     * optimize for topn query like: SELECT * FROM t1 WHERE a>100 ORDER BY b,c LIMIT 100
+     * the pre-requirement is as follows:
+     * 1. only contains SortNode + OlapScanNode
+     * 2. limit > 0
+     * 3. first expression of order by is a table column
+     */
+    private void checkAndSetTopnOpt(SortNode sortNode) {
+        PlanNode child = sortNode.getChild(0);
+        if (child instanceof OlapScanNode && sortNode.getLimit() > 0
+                && ConnectContext.get() != null && ConnectContext.get().getSessionVariable() != null
+                && sortNode.getLimit() <= ConnectContext.get().getSessionVariable().topnOptLimitThreshold
+                && !sortNode.getSortInfo().getOrderingExprs().isEmpty()) {
+            Expr firstSortExpr = sortNode.getSortInfo().getOrderingExprs().get(0);
+            if (firstSortExpr instanceof SlotRef && !firstSortExpr.getType().isStringType()
+                    && !firstSortExpr.getType().isFloatingPointType()) {
+                OlapScanNode scanNode = (OlapScanNode) child;
+                if (scanNode.isDupKeysOrMergeOnWrite()) {
+                    sortNode.setUseTopnOpt(true);
+                    scanNode.setUseTopnOpt(true);
+                }
+            }
+        }
+
     }
 
     private SortNode translateSortNode(AbstractPhysicalSort<? extends Plan> sort, PlanNode childNode,
