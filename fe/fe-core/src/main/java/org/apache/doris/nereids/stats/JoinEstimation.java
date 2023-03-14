@@ -23,6 +23,7 @@ import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.SlotReference;
 import org.apache.doris.nereids.trees.plans.JoinType;
 import org.apache.doris.nereids.trees.plans.algebra.Join;
+import org.apache.doris.nereids.util.ExpressionUtils;
 import org.apache.doris.statistics.ColumnStatistic;
 import org.apache.doris.statistics.StatsDeriveResult;
 
@@ -132,16 +133,17 @@ public class JoinEstimation {
             throw new RuntimeException("joinType is not supported");
         }
 
-        StatsDeriveResult statsDeriveResult = new StatsDeriveResult(rowCount,
+        StatsDeriveResult joinStats = new StatsDeriveResult(rowCount,
                 rightStats.getWidth() + leftStats.getWidth(), 0, Maps.newHashMap());
         if (joinType.isRemainLeftJoin()) {
-            statsDeriveResult.merge(leftStats);
+            joinStats.merge(leftStats);
         }
         if (joinType.isRemainRightJoin()) {
-            statsDeriveResult.merge(rightStats);
+            joinStats.merge(rightStats);
         }
-        //TODO: consider other join conjuncts
-        return statsDeriveResult;
+        FilterEstimation filterEstimation =
+                new FilterEstimation(joinStats);
+        return filterEstimation.estimate(ExpressionUtils.and(join.getOtherJoinConjuncts()));
     }
 
 }
