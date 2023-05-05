@@ -19,7 +19,6 @@ package org.apache.doris.nereids.processor.post;
 
 import org.apache.doris.nereids.CascadesContext;
 import org.apache.doris.nereids.trees.plans.physical.PhysicalPlan;
-import org.apache.doris.qe.ConnectContext;
 import org.apache.doris.thrift.TRuntimeFilterMode;
 
 import com.google.common.collect.ImmutableList;
@@ -62,9 +61,6 @@ public class PlanPostProcessors {
         if (!cascadesContext.getConnectContext().getSessionVariable().getRuntimeFilterMode()
                         .toUpperCase().equals(TRuntimeFilterMode.OFF.name())) {
             builder.add(new RuntimeFilterGenerator());
-            if (ConnectContext.get().getSessionVariable().enableRuntimeFilterPrune) {
-                builder.add(new RuntimeFilterPruner());
-            }
         }
         builder.add(new Validator());
         builder.add(new TopNScanOpt());

@@ -27,6 +27,7 @@ import org.apache.doris.nereids.trees.expressions.NamedExpression;
 import org.apache.doris.nereids.trees.expressions.Not;
 import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.BitmapContains;
+import org.apache.doris.nereids.trees.plans.AbstractPlan;
 import org.apache.doris.nereids.trees.plans.JoinType;
 import org.apache.doris.nereids.trees.plans.ObjectId;
 import org.apache.doris.nereids.trees.plans.Plan;
@@ -39,6 +40,9 @@ import org.apache.doris.nereids.trees.plans.physical.RuntimeFilter;
 import org.apache.doris.nereids.util.ExpressionUtils;
 import org.apache.doris.nereids.util.JoinUtils;
 import org.apache.doris.planner.RuntimeFilterId;
+import org.apache.doris.qe.ConnectContext;
+import org.apache.doris.statistics.ColumnStatistic;
+import org.apache.doris.statistics.StatisticRange;
 import org.apache.doris.thrift.TRuntimeFilterType;
 
 import com.google.common.collect.ImmutableSet;
@@ -102,6 +106,11 @@ public class RuntimeFilterGenerator extends PlanPostProcessor {
                     if (type == TRuntimeFilterType.BITMAP) {
                         continue;
                     }
+                    if (ConnectContext.get().getSessionVariable().isEnableRuntimeFilterPrune()) {
+                        if (!isEffectiveRuntimeFilter(equalTo, join)) {
+                            continue;
+                        }
+                    }
                     // in-filter is not friendly to pipeline
                     if (type == TRuntimeFilterType.IN_OR_BLOOM && ctx.getSessionVariable().enablePipelineEngine()) {
                         type = TRuntimeFilterType.BLOOM;
@@ -124,6 +133,34 @@ public class RuntimeFilterGenerator extends PlanPostProcessor {
             }
         }
         return join;
+    }
+
+    /**
+     * target ndv set A, source ndv set B, rf aims to filter out tuples in target whose value in set A-B.
+     * @param swapEqual left and right hands of equal are from left and right child respectively.
+     * @param join join node
+     * @return false if rf selectivity is more than 3/4
+     */
+    private boolean isEffectiveRuntimeFilter(EqualTo swapEqual, PhysicalHashJoin join) {
+        Set<Slot> leftSlots = swapEqual.left().getInputSlots();
+        Set<Slot> rightSlots = swapEqual.right().getInputSlots();
+        if (leftSlots.size() != 1 || rightSlots.size() != 1) {
+            return true;
+        }
+        Slot leftSlot = leftSlots.iterator().next();
+        Slot rightSlot = rightSlots.iterator().next();
+
+        ColumnStatistic leftSlotStats = ((AbstractPlan) join.left()).getStats().findColumnStatistics(leftSlot);
+        ColumnStatistic rightSlotStats = ((AbstractPlan) join.right()).getStats().findColumnStatistics(rightSlot);
+        if (leftSlotStats == null || rightSlotStats == null || leftSlotStats.isUnKnown || rightSlotStats.isUnKnown) {
+            return true;
+        }
+        final double effectiveRuntimeFilterSelectivity = 0.75;
+        StatisticRange leftRange = StatisticRange.from(leftSlotStats, leftSlot.getDataType());
+        StatisticRange rightRange = StatisticRange.from(rightSlotStats, rightSlot.getDataType());
+        double rightNdvInLeftRange = rightRange.overlapPercentWith(leftRange) * rightSlotStats.ndv;
+
+        return leftSlotStats.originalNdv * effectiveRuntimeFilterSelectivity > rightNdvInLeftRange;
     }
 
     @Override

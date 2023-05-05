@@ -251,21 +251,10 @@ public class ColumnStatistic {
         }
     }
 
-    public boolean notEnclosed(ColumnStatistic other) {
-        return !enclosed(other);
-    }
-
-    /**
-     * Return true if range of this is enclosed by another.
-     */
-    public boolean enclosed(ColumnStatistic other) {
-        return this.maxValue >= other.maxValue && this.maxValue <= other.maxValue;
-    }
-
     @Override
     public String toString() {
-        return isUnKnown ? "unKnown" : String.format("ndv=%.4f, min=%f, max=%f, sel=%f, count=%.4f",
-                ndv, minValue, maxValue, selectivity, count);
+        return isUnKnown ? "unKnown" : String.format("ndv=%.4f(%.4f), min=%f, max=%f, sel=%f, count=%.4f",
+                ndv, originalNdv, minValue, maxValue, selectivity, count);
     }
 
     public boolean minOrMaxIsInf() {

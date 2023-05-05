@@ -136,8 +136,15 @@ public class StatsCalculator extends DefaultPlanVisitor<Statistics, Void> {
         in an ideal cost model, every group expression in a group are equivalent, but in fact the cost are different.
         we record the lowest expression cost as group cost to avoid missing this group.
         */
-        if (originStats == null || originStats.getRowCount() > stats.getRowCount()) {
+        if (originStats == null) {
             groupExpression.getOwnerGroup().setStatistics(stats);
+        } else {
+            if (originStats.getRowCount() > stats.getRowCount()) {
+                stats.updateNdv(originStats);
+                groupExpression.getOwnerGroup().setStatistics(stats);
+            } else {
+                originStats.updateNdv(stats);
+            }
         }
         groupExpression.setEstOutputRowCount(stats.getRowCount());
         groupExpression.setStatDerived(true);
