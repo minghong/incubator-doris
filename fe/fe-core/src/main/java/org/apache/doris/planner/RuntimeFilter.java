@@ -563,11 +563,15 @@ public final class RuntimeFilter {
             filterSizeBytes = filterSizeLimits.defaultVal;
             return;
         }
+        if (ConnectContext.get().getSessionVariable().isDumpNereidsMemo()) {
+            filterSizeBytes = filterSizeLimits.defaultVal;
+            return;
+        }
         double fpp = FeConstants.default_bloom_filter_fpp;
         int logFilterSize = getMinLogSpaceForBloomFilter(ndvEstimate, fpp);
         filterSizeBytes = 1L << logFilterSize;
-        //filterSizeBytes = Math.max(filterSizeBytes, filterSizeLimits.minVal);
-        //filterSizeBytes = Math.min(filterSizeBytes, filterSizeLimits.maxVal);
+        filterSizeBytes = Math.max(filterSizeBytes, filterSizeLimits.minVal);
+        filterSizeBytes = Math.min(filterSizeBytes, filterSizeLimits.maxVal);
     }
 
     /**

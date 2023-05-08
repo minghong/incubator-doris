@@ -213,10 +213,10 @@ public class NereidsPlanner extends Planner {
 
             // print memo before choose plan.
             // if chooseNthPlan failed, we could get memo to debug
-            if (ConnectContext.get().getSessionVariable().isDumpNereidsMemo()) {
-                String memo = cascadesContext.getMemo().toString();
-                LOG.info(memo);
-            }
+            //if (ConnectContext.get().getSessionVariable().isDumpNereidsMemo()) {
+            //    String memo = cascadesContext.getMemo().toString();
+            //    LOG.info(memo);
+            //}
 
             int nth = ConnectContext.get().getSessionVariable().getNthOptimizedPlan();
             PhysicalPlan physicalPlan = chooseNthPlan(getRoot(), requireProperties, nth);
