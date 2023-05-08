@@ -1022,7 +1022,12 @@ public abstract class PlanNode extends TreeNode<PlanNode> implements PlanStats {
         for (RuntimeFilter filter : runtimeFilters) {
             StringBuilder filterStr = new StringBuilder();
             filterStr.append(filter.getFilterId());
-            if (!isBrief) {
+            if (isBrief) {
+                if (isBuildNode) {
+                    filterStr.append("(" + filter.getNdvEstimate() + "/"
+                            + filter.getFilterSizeBytes() + ")");
+                }
+            } else {
                 filterStr.append("[");
                 filterStr.append(filter.getType().toString().toLowerCase());
                 filterStr.append("]");
@@ -1030,6 +1035,8 @@ public abstract class PlanNode extends TreeNode<PlanNode> implements PlanStats {
                     filterStr.append(" <- ");
                     filterStr.append(filter.getSrcExpr().toSql());
                 } else {
+                    filterStr.append("(ndv: " + filter.getNdvEstimate() + "/rf size:"
+                            + filter.getFilterSizeBytes() + ")");
                     filterStr.append(" -> ");
                     filterStr.append(filter.getTargetExpr(getId()).toSql());
                 }

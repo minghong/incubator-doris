@@ -147,11 +147,28 @@ public final class RuntimeFilter {
         calculateFilterSize(filterSizeLimits);
     }
 
+    private RuntimeFilter(RuntimeFilterId filterId, PlanNode filterSrcNode, Expr srcExpr, int exprOrder,
+            Expr origTargetExpr, Map<TupleId, List<SlotId>> targetSlots,
+            TRuntimeFilterType type, RuntimeFilterGenerator.FilterSizeLimits filterSizeLimits,
+            long buildSideNdv) {
+        this.id = filterId;
+        this.builderNode = filterSrcNode;
+        this.srcExpr = srcExpr;
+        this.exprOrder = exprOrder;
+        this.origTargetExpr = origTargetExpr;
+        this.targetSlotsByTid = targetSlots;
+        this.runtimeFilterType = type;
+        ndvEstimate = buildSideNdv;
+        calculateFilterSize(filterSizeLimits);
+    }
+
+
     // only for nereids planner
     public static RuntimeFilter fromNereidsRuntimeFilter(RuntimeFilterId id, JoinNodeBase node, Expr srcExpr,
             int exprOrder, Expr origTargetExpr, Map<TupleId, List<SlotId>> targetSlots,
-            TRuntimeFilterType type, RuntimeFilterGenerator.FilterSizeLimits filterSizeLimits) {
-        return new RuntimeFilter(id, node, srcExpr, exprOrder, origTargetExpr, targetSlots, type, filterSizeLimits);
+            TRuntimeFilterType type, RuntimeFilterGenerator.FilterSizeLimits filterSizeLimits, long buildSideNdv) {
+        return new RuntimeFilter(id, node, srcExpr, exprOrder,
+                origTargetExpr, targetSlots, type, filterSizeLimits, buildSideNdv);
     }
 
     @Override
@@ -549,8 +566,8 @@ public final class RuntimeFilter {
         double fpp = FeConstants.default_bloom_filter_fpp;
         int logFilterSize = getMinLogSpaceForBloomFilter(ndvEstimate, fpp);
         filterSizeBytes = 1L << logFilterSize;
-        filterSizeBytes = Math.max(filterSizeBytes, filterSizeLimits.minVal);
-        filterSizeBytes = Math.min(filterSizeBytes, filterSizeLimits.maxVal);
+        //filterSizeBytes = Math.max(filterSizeBytes, filterSizeLimits.minVal);
+        //filterSizeBytes = Math.min(filterSizeBytes, filterSizeLimits.maxVal);
     }
 
     /**
@@ -596,6 +613,14 @@ public final class RuntimeFilter {
         }
         assignToPlanNodes();
         analyzer.putAssignedRuntimeFilter(this);
+    }
+
+    public long getNdvEstimate() {
+        return ndvEstimate;
+    }
+
+    public long getFilterSizeBytes() {
+        return filterSizeBytes;
     }
 
     public String debugString() {

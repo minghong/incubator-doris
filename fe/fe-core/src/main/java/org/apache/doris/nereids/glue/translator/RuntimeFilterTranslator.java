@@ -131,7 +131,7 @@ public class RuntimeFilterTranslator {
                 = org.apache.doris.planner.RuntimeFilter.fromNereidsRuntimeFilter(
                 filter.getId(), node, src, filter.getExprOrder(), targetExpr,
                 ImmutableMap.of(targetTupleId, ImmutableList.of(targetSlotId)),
-                filter.getType(), filterSizeLimits);
+                filter.getType(), filterSizeLimits, filter.getBuildSideNdv());
         if (node instanceof HashJoinNode) {
             origFilter.setIsBroadcast(((HashJoinNode) node).getDistributionMode() == DistributionMode.BROADCAST);
         } else {
