@@ -95,7 +95,7 @@ public class PushdownProjectThroughInnerJoin extends OneExplorationRuleFactory {
                 Plan newLeft = CBOUtils.projectOrSelf(newAProject.build(), join.left());
 
                 if (!rightContains) {
-                    Plan newJoin = join.withChildrenNoContext(newLeft, join.right());
+                    Plan newJoin = join.withChildren(newLeft, join.right());
                     return CBOUtils.projectOrSelf(new ArrayList<>(project.getOutput()), newJoin);
                 }
 
@@ -105,7 +105,7 @@ public class PushdownProjectThroughInnerJoin extends OneExplorationRuleFactory {
                 bConditionSlots.stream().filter(slot -> !bProjectSlots.contains(slot)).forEach(newBProject::add);
                 Plan newRight = CBOUtils.projectOrSelf(newBProject.build(), join.right());
 
-                Plan newJoin = join.withChildrenNoContext(newLeft, newRight);
+                Plan newJoin = join.withChildren(newLeft, newRight);
                 return CBOUtils.projectOrSelf(new ArrayList<>(project.getOutput()), newJoin);
             }).toRule(RuleType.PUSH_DOWN_PROJECT_THROUGH_INNER_JOIN);
     }
