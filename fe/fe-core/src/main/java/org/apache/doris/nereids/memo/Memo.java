@@ -31,6 +31,7 @@ import org.apache.doris.nereids.metrics.event.GroupMergeEvent;
 import org.apache.doris.nereids.properties.LogicalProperties;
 import org.apache.doris.nereids.properties.PhysicalProperties;
 import org.apache.doris.nereids.trees.expressions.Expression;
+import org.apache.doris.nereids.trees.expressions.SlotReference;
 import org.apache.doris.nereids.trees.plans.GroupPlan;
 import org.apache.doris.nereids.trees.plans.LeafPlan;
 import org.apache.doris.nereids.trees.plans.Plan;
@@ -712,8 +713,13 @@ public class Memo {
             Statistics stats = group.getStatistics();
             if (stats != null && !group.getLogicalExpressions().isEmpty()
                     && group.getLogicalExpressions().get(0).getPlan() instanceof LogicalOlapScan) {
+                String tableName =((LogicalOlapScan)(group.getLogicalExpressions().get(0).getPlan()))
+                        .getTable().getName();
                 for (Entry e : stats.columnStatistics().entrySet()) {
-                    builder.append("    ").append(e.getKey()).append(":").append(e.getValue()).append("\n");
+                    String columnName = ((SlotReference) e.getKey()).getName();
+                    builder.append("    alter table ").append(tableName)
+                            .append(" modify column ").append(columnName)
+                            .append(" set stats ").append(e.getValue()).append(";\n");
                 }
             }
 

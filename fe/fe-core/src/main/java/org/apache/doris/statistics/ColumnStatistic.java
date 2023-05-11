@@ -264,8 +264,14 @@ public class ColumnStatistic {
 
     @Override
     public String toString() {
-        return isUnKnown ? "unKnown" : String.format("ndv=%.4f, min=%f, max=%f, sel=%f, count=%.4f",
-                ndv, minValue, maxValue, selectivity, count);
+        return isUnKnown
+                ? "unKnown"
+                : String.format("('ndv'='%.4f', 'avg_size'='%.1f', 'max_size'='%.0f', "
+                                + "'min_value'='%s', 'max_value'='%s', 'row_count'='%.4f')",
+                ndv, avgSizeByte, avgSizeByte, minExpr, maxExpr, count);
+        //return isUnKnown ? "unKnown" : String.format("ndv=%.4f, min=%f, max=%f, sel=%f, count=%.4f",
+        //        ndv, minValue, maxValue, selectivity, count);
+
     }
 
     public boolean minOrMaxIsInf() {
