@@ -21,20 +21,17 @@ import org.apache.doris.nereids.trees.expressions.Alias;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.NamedExpression;
 import org.apache.doris.nereids.trees.expressions.Slot;
-import org.apache.doris.nereids.trees.expressions.WindowExpression;
-import org.apache.doris.nereids.trees.expressions.visitor.DefaultExpressionRewriter;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
-import java.util.stream.Collectors;
+import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 /** NormalizeToSlot */
@@ -48,16 +45,9 @@ public interface NormalizeToSlot {
             this.normalizeToSlotMap = normalizeToSlotMap;
         }
 
-        /**
-         * build normalization context by follow step.
-         *   1. collect all exists alias by input parameters existsAliases build a reverted map: expr -> alias
-         *   2. for all input source expressions, use existsAliasMap to construct triple:
-         *     origin expr, pushed expr and alias to replace origin expr,
-         *     see more detail in {@link NormalizeToSlotTriplet}
-         *   3. construct a map: original expr -> triple constructed by step 2
-         */
+        /** buildContext */
         public static NormalizeToSlotContext buildContext(
-                Set<Alias> existsAliases, Collection<? extends Expression> sourceExpressions) {
+                Set<Alias> existsAliases, Set<? extends Expression> sourceExpressions) {
             Map<Expression, NormalizeToSlotTriplet> normalizeToSlotMap = Maps.newLinkedHashMap();
 
             Map<Expression, Alias> existsAliasMap = Maps.newLinkedHashMap();
@@ -80,21 +70,13 @@ public interface NormalizeToSlot {
             return normalizeToUseSlotRef(ImmutableList.of(expression)).get(0);
         }
 
-        /**
-         * normalizeToUseSlotRef, no custom normalize.
-         * This function use a lambda that always return original expression as customNormalize
-         * So always use normalizeToSlotMap to process normalization when we call this function
-         */
-        public <E extends Expression> List<E> normalizeToUseSlotRef(Collection<E> expressions) {
+        /** normalizeToUseSlotRef, no custom normalize */
+        public <E extends Expression> List<E> normalizeToUseSlotRef(List<E> expressions) {
             return normalizeToUseSlotRef(expressions, (context, expr) -> expr);
         }
 
-        /**
-         * normalizeToUseSlotRef.
-         * try to use customNormalize do normalization first. if customNormalize cannot handle current expression,
-         * use normalizeToSlotMap to get the default replaced expression.
-         */
-        public <E extends Expression> List<E> normalizeToUseSlotRef(Collection<E> expressions,
+        /** normalizeToUseSlotRef */
+        public <E extends Expression> List<E> normalizeToUseSlotRef(List<E> expressions,
                 BiFunction<NormalizeToSlotContext, Expression, Expression> customNormalize) {
             return expressions.stream()
                     .map(expr -> (E) expr.rewriteDownShortCircuit(child -> {
@@ -107,11 +89,22 @@ public interface NormalizeToSlot {
                     })).collect(ImmutableList.toImmutableList());
         }
 
-        public <E extends Expression> List<E> normalizeToUseSlotRefWithoutWindowFunction(
-                Collection<E> expressions) {
-            return expressions.stream()
-                    .map(e -> (E) e.accept(NormalizeWithoutWindowFunction.INSTANCE, normalizeToSlotMap))
-                    .collect(Collectors.toList());
+        public <E extends Expression> E normalizeToUseSlotRefUp(E expression, Predicate skip) {
+            return (E) expression.rewriteDownShortCircuitUp(child -> {
+                NormalizeToSlotTriplet normalizeToSlotTriplet = normalizeToSlotMap.get(child);
+                return normalizeToSlotTriplet == null ? child : normalizeToSlotTriplet.remainExpr;
+            }, skip);
+        }
+
+        /**
+         * rewrite subtrees whose root matches predicate border
+         * when we traverse to the node satisfies border predicate, aboveBorder becomes false
+         */
+        public <E extends Expression> E normalizeToUseSlotRefDown(E expression, Predicate border, boolean aboveBorder) {
+            return (E) expression.rewriteDownShortCircuitDown(child -> {
+                NormalizeToSlotTriplet normalizeToSlotTriplet = normalizeToSlotMap.get(child);
+                return normalizeToSlotTriplet == null ? child : normalizeToSlotTriplet.remainExpr;
+            }, border, aboveBorder);
         }
 
         /**
@@ -128,54 +121,6 @@ public interface NormalizeToSlot {
                                 ? (NamedExpression) expr
                                 : normalizeToSlotTriplet.pushedExpr;
                     }).collect(ImmutableSet.toImmutableSet());
-        }
-    }
-
-    /**
-     * replace any expression except window function.
-     * because the window function could be same with aggregate function and should never be replaced.
-     */
-    class NormalizeWithoutWindowFunction
-            extends DefaultExpressionRewriter<Map<Expression, NormalizeToSlotTriplet>> {
-
-        public static final NormalizeWithoutWindowFunction INSTANCE = new NormalizeWithoutWindowFunction();
-
-        private NormalizeWithoutWindowFunction() {
-        }
-
-        @Override
-        public Expression visit(Expression expr, Map<Expression, NormalizeToSlotTriplet> replaceMap) {
-            if (replaceMap.containsKey(expr)) {
-                return replaceMap.get(expr).remainExpr;
-            }
-            return super.visit(expr, replaceMap);
-        }
-
-        @Override
-        public Expression visitWindow(WindowExpression windowExpression,
-                Map<Expression, NormalizeToSlotTriplet> replaceMap) {
-            if (replaceMap.containsKey(windowExpression)) {
-                return replaceMap.get(windowExpression).remainExpr;
-            }
-            List<Expression> newChildren = new ArrayList<>();
-            Expression function = super.visit(windowExpression.getFunction(), replaceMap);
-            newChildren.add(function);
-            boolean hasNewChildren = function != windowExpression.getFunction();
-            for (Expression partitionKey : windowExpression.getPartitionKeys()) {
-                Expression newChild = partitionKey.accept(this, replaceMap);
-                if (newChild != partitionKey) {
-                    hasNewChildren = true;
-                }
-                newChildren.add(newChild);
-            }
-            for (Expression orderKey : windowExpression.getOrderKeys()) {
-                Expression newChild = orderKey.accept(this, replaceMap);
-                if (newChild != orderKey) {
-                    hasNewChildren = true;
-                }
-                newChildren.add(newChild);
-            }
-            return hasNewChildren ? windowExpression.withChildren(newChildren) : windowExpression;
         }
     }
 
@@ -197,12 +142,7 @@ public interface NormalizeToSlot {
             this.pushedExpr = pushedExpr;
         }
 
-        /**
-         * construct triplet by three conditions.
-         * 1. already has exists alias: use this alias as pushed expr
-         * 2. expression is {@link NamedExpression}, use itself as pushed expr
-         * 3. other expression, construct a new Alias contains current expression as pushed expr
-         */
+        /** toTriplet */
         public static NormalizeToSlotTriplet toTriplet(Expression expression, @Nullable Alias existsAlias) {
             if (existsAlias != null) {
                 return new NormalizeToSlotTriplet(expression, existsAlias.toSlot(), existsAlias);
@@ -210,7 +150,9 @@ public interface NormalizeToSlot {
 
             if (expression instanceof NamedExpression) {
                 NamedExpression namedExpression = (NamedExpression) expression;
-                return new NormalizeToSlotTriplet(expression, namedExpression.toSlot(), namedExpression);
+                NormalizeToSlotTriplet normalizeToSlotTriplet =
+                        new NormalizeToSlotTriplet(expression, namedExpression.toSlot(), namedExpression);
+                return normalizeToSlotTriplet;
             }
 
             Alias alias = new Alias(expression, expression.toSql());
