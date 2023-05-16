@@ -40,7 +40,6 @@ import java.util.List;
 class PushdownProjectThroughInnerJoinTest implements MemoPatternMatchSupported {
     private final LogicalOlapScan scan1 = PlanConstructor.newLogicalOlapScan(0, "t1", 0);
     private final LogicalOlapScan scan2 = PlanConstructor.newLogicalOlapScan(1, "t2", 0);
-    private final LogicalOlapScan scan3 = PlanConstructor.newLogicalOlapScan(2, "t3", 0);
 
     @Test
     public void pushBothSide() {
@@ -55,20 +54,16 @@ class PushdownProjectThroughInnerJoinTest implements MemoPatternMatchSupported {
         LogicalPlan plan = new LogicalPlanBuilder(scan1)
                 .join(scan2, JoinType.INNER_JOIN, Pair.of(1, 1))
                 .projectExprs(projectExprs)
-                .join(scan3, JoinType.INNER_JOIN, Pair.of(1, 1))
                 .build();
 
         PlanChecker.from(MemoTestUtils.createConnectContext(), plan)
-                .applyExploration(PushdownProjectThroughInnerJoin.INSTANCE.buildRules())
+                .applyExploration(PushdownProjectThroughInnerJoin.INSTANCE.build())
                 .printlnOrigin()
                 .printlnExploration()
                 .matchesExploration(
                         logicalJoin(
-                                logicalJoin(
-                                        logicalProject().when(project -> project.getProjects().size() == 2),
-                                        logicalProject().when(project -> project.getProjects().size() == 2)
-                                ),
-                                logicalOlapScan()
+                                logicalProject().when(project -> project.getProjects().size() == 2),
+                                logicalProject().when(project -> project.getProjects().size() == 2)
                         )
                 );
     }
@@ -86,22 +81,18 @@ class PushdownProjectThroughInnerJoinTest implements MemoPatternMatchSupported {
         LogicalPlan plan = new LogicalPlanBuilder(scan1)
                 .join(scan2, JoinType.INNER_JOIN, Pair.of(0, 0))
                 .projectExprs(projectExprs)
-                .join(scan3, JoinType.INNER_JOIN, Pair.of(1, 1))
                 .build();
 
         PlanChecker.from(MemoTestUtils.createConnectContext(), plan)
-                .applyExploration(PushdownProjectThroughInnerJoin.INSTANCE.buildRules())
+                .applyExploration(PushdownProjectThroughInnerJoin.INSTANCE.build())
                 .printlnOrigin()
                 .printlnExploration()
                 .matchesExploration(
-                        logicalJoin(
-                                logicalProject(
-                                        logicalJoin(
-                                                logicalProject().when(project -> project.getProjects().size() == 3),
-                                                logicalProject().when(project -> project.getProjects().size() == 3)
-                                        )
-                                ),
-                                logicalOlapScan()
+                        logicalProject(
+                                logicalJoin(
+                                        logicalProject().when(project -> project.getProjects().size() == 3),
+                                        logicalProject().when(project -> project.getProjects().size() == 3)
+                                )
                         )
                 );
     }
@@ -117,29 +108,26 @@ class PushdownProjectThroughInnerJoinTest implements MemoPatternMatchSupported {
         LogicalPlan plan = new LogicalPlanBuilder(scan1)
                 .join(scan2, JoinType.INNER_JOIN, Pair.of(0, 0))
                 .projectExprs(projectExprs)
-                .join(scan3, JoinType.INNER_JOIN, Pair.of(0, 0))
                 .build();
 
         PlanChecker.from(MemoTestUtils.createConnectContext(), plan)
-                .applyExploration(PushdownProjectThroughInnerJoin.INSTANCE.buildRules())
+                .applyExploration(PushdownProjectThroughInnerJoin.INSTANCE.build())
                 .printlnOrigin()
                 .printlnExploration()
                 .matchesExploration(
-                    logicalJoin(
-                        logicalProject(
-                            logicalJoin(
-                                logicalProject()
-                                    .when(project ->
-                                            project.getProjects().get(0).toSql().equals("(id + name) AS `complex1`")
-                                            && project.getProjects().get(1).toSql().equals("id")),
-                                logicalProject()
-                                    .when(project ->
-                                            project.getProjects().get(0).toSql().equals("(id + name) AS `complex2`")
-                                            && project.getProjects().get(1).toSql().equals("id"))
-                            )
-                        ).when(project -> project.getProjects().get(0).toSql().equals("complex1")
-                                && project.getProjects().get(1).toSql().equals("complex2")),
-                        logicalOlapScan()
+                    logicalProject(
+                        logicalJoin(
+                            logicalProject()
+                                .when(project ->
+                                        project.getProjects().get(0).toSql().equals("(id + name) AS `complex1`")
+                                        && project.getProjects().get(1).toSql().equals("id")),
+                            logicalProject()
+                                .when(project ->
+                                        project.getProjects().get(0).toSql().equals("(id + name) AS `complex2`")
+                                        && project.getProjects().get(1).toSql().equals("id"))
+                        )
+                    ).when(project -> project.getProjects().get(0).toSql().equals("complex1")
+                            && project.getProjects().get(1).toSql().equals("complex2")
                     )
                 );
     }
@@ -154,11 +142,10 @@ class PushdownProjectThroughInnerJoinTest implements MemoPatternMatchSupported {
         LogicalPlan plan = new LogicalPlanBuilder(scan1)
                 .join(scan2, JoinType.INNER_JOIN, Pair.of(0, 0))
                 .projectExprs(projectExprs)
-                .join(scan3, JoinType.INNER_JOIN, Pair.of(0, 0))
                 .build();
 
         PlanChecker.from(MemoTestUtils.createConnectContext(), plan)
-                .applyExploration(PushdownProjectThroughInnerJoin.INSTANCE.buildRules())
+                .applyExploration(PushdownProjectThroughInnerJoin.INSTANCE.build())
                 .checkMemo(memo -> Assertions.assertEquals(1, memo.getRoot().getLogicalExpressions().size()));
     }
 }
