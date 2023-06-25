@@ -407,6 +407,13 @@ public class FilterEstimation extends ExpressionVisitor<Statistics, EstimationCo
             sel = sel1 * Math.pow(sel2, reduceRatio);
         } else {
             sel = 1 / StatsMathUtil.nonZeroDivisor(Math.max(leftStats.ndv, rightStats.ndv));
+            ColumnStatistic bigger = leftStats.ndv > rightStats.ndv ? leftStats : rightStats;
+            if (!bigger.isAlmostUnique()) {
+                ColumnStatistic smaller = leftStats.ndv <= rightStats.ndv ? leftStats : rightStats;
+                if (smaller.getOriginalNdv() > bigger.getOriginalNdv()) {
+                    sel = sel * bigger.getOriginalNdv() / smaller.getOriginalNdv();
+                }
+            }
         }
         Statistics updatedStatistics = context.statistics.withSel(sel);
         updatedStatistics.addColumnStats(leftExpr, leftBuilder.build());

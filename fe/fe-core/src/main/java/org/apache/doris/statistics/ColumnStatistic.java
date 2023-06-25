@@ -181,6 +181,10 @@ public class ColumnStatistic {
         return rowCount * 0.9 < ndv && ndv < rowCount * 1.1;
     }
 
+    public boolean isAlmostUnique() {
+        return isAlmostUnique(ndv, count);
+    }
+
     public ColumnStatistic copy() {
         return new ColumnStatisticBuilder().setCount(count).setNdv(ndv).setAvgSizeByte(avgSizeByte)
                 .setNumNulls(numNulls).setDataSize(dataSize).setMinValue(minValue)

@@ -72,6 +72,23 @@ public class JoinEstimation {
         return false;
     }
 
+    private static double estimateUntrustableConditionSel(Statistics crossJoinStats, List<EqualTo> untrusts) {
+        List<Double> sels = Lists.newArrayList();
+        for (EqualTo eq : untrusts) {
+            ColumnStatistic leftColStats = ExpressionEstimation.estimate(eq.left(), crossJoinStats);
+            ColumnStatistic rightColStats = ExpressionEstimation.estimate(eq.right(), crossJoinStats);
+            double sel = Math.min(leftColStats.ndv / rightColStats.ndv,
+                    leftColStats.getOriginalNdv() / rightColStats.getOriginalNdv());
+            sels.add(sel);
+        }
+        sels = sels.stream().sorted().collect(Collectors.toList());
+        double sel = 1.0;
+        for (int i = 0; i < sels.size(); i++) {
+            sel = sel * Math.pow(sels.get(i), 1 / Math.pow(2, i));
+        }
+        return sel;
+    }
+
     private static Statistics estimateInnerJoin(Statistics leftStats, Statistics rightStats, Join join) {
         if (hashJoinConditionContainsUnknownColumnStats(leftStats, rightStats, join)) {
             double rowCount = Math.max(leftStats.getRowCount(), rightStats.getRowCount());
@@ -149,7 +166,7 @@ public class JoinEstimation {
                 sel *= Math.pow(sortedJoinConditions.get(i).second, 1 / Math.pow(2, i));
             }
             outputRowCount = Math.max(1, crossJoinStats.getRowCount() * sel);
-            outputRowCount = outputRowCount * Math.pow(0.9, unTrustableCondition.size());
+            outputRowCount = outputRowCount * estimateUntrustableConditionSel(crossJoinStats, unTrustableCondition);
             innerJoinStats = crossJoinStats.updateRowCountOnly(outputRowCount);
         } else {
             outputRowCount = Math.max(leftStats.getRowCount(), rightStats.getRowCount());
