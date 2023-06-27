@@ -188,6 +188,10 @@ public class ColumnStatistic {
                 .setSelectivity(selectivity).setIsUnknown(isUnKnown).build();
     }
 
+    public boolean isAlmostUnique() {
+        return isAlmostUnique(ndv, count);
+    }
+
     public ColumnStatistic updateByLimit(long limit, double rowCount) {
         double ratio = 0;
         if (rowCount != 0) {

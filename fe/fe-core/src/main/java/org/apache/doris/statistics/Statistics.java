@@ -111,8 +111,8 @@ public class Statistics {
             ColumnStatistic columnStatistic = entry.getValue();
             ColumnStatisticBuilder columnStatisticBuilder = new ColumnStatisticBuilder(columnStatistic);
             columnStatisticBuilder.setNdv(Math.min(columnStatistic.ndv, rowCount));
-            double nullFactor = (rowCount - columnStatistic.numNulls) / rowCount;
-            columnStatisticBuilder.setNumNulls(nullFactor * rowCount);
+            double scale = Math.min(1, rowCount / columnStatistic.count);
+            columnStatisticBuilder.setNumNulls(columnStatistic.numNulls * scale);
             columnStatisticBuilder.setCount(rowCount);
             statistics.addColumnStats(entry.getKey(), columnStatisticBuilder.build());
         }
