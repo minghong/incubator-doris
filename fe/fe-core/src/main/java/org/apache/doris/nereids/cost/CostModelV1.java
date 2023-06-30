@@ -22,6 +22,7 @@ import org.apache.doris.nereids.properties.DistributionSpec;
 import org.apache.doris.nereids.properties.DistributionSpecGather;
 import org.apache.doris.nereids.properties.DistributionSpecHash;
 import org.apache.doris.nereids.properties.DistributionSpecReplicated;
+import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.physical.PhysicalAssertNumRows;
 import org.apache.doris.nereids.trees.plans.physical.PhysicalDistribute;
@@ -44,6 +45,8 @@ import org.apache.doris.qe.ConnectContext;
 import org.apache.doris.statistics.Statistics;
 
 import com.google.common.base.Preconditions;
+
+import java.util.List;
 
 class CostModelV1 extends PlanVisitor<Cost, PlanContext> {
     /**
@@ -178,12 +181,12 @@ class CostModelV1 extends PlanVisitor<Cost, PlanContext> {
             return CostV1.of(
                     0,
                     0,
-                    intputRowCount * childStatistics.dataSizeFactor() / beNumber);
+                    intputRowCount * childStatistics.dataSizeFactor(distribute.getOutput()) / beNumber);
         }
 
         // replicate
         if (spec instanceof DistributionSpecReplicated) {
-            double dataSize = childStatistics.computeSize();
+            double dataSize = childStatistics.computeSize(distribute.getOutput());
             double memLimit = ConnectContext.get().getSessionVariable().getMaxExecMemByte();
             //if build side is big, avoid use broadcast join
             double rowsLimit = ConnectContext.get().getSessionVariable().getBroadcastRowCountLimit();
@@ -198,7 +201,7 @@ class CostModelV1 extends PlanVisitor<Cost, PlanContext> {
             return CostV1.of(
                     0,
                     0,
-                    intputRowCount * childStatistics.dataSizeFactor());
+                    intputRowCount * childStatistics.dataSizeFactor(distribute.getOutput()));
 
         }
 
@@ -207,7 +210,7 @@ class CostModelV1 extends PlanVisitor<Cost, PlanContext> {
             return CostV1.of(
                     0,
                     0,
-                    intputRowCount * childStatistics.dataSizeFactor() / beNumber);
+                    intputRowCount * childStatistics.dataSizeFactor(distribute.getOutput()) / beNumber);
         }
 
         // any
@@ -221,19 +224,24 @@ class CostModelV1 extends PlanVisitor<Cost, PlanContext> {
     public Cost visitPhysicalHashAggregate(
             PhysicalHashAggregate<? extends Plan> aggregate, PlanContext context) {
         Statistics inputStatistics = context.getChildStatistics(0);
+        int outputCount = aggregate.getOutput().size();
+        int groupByCount = aggregate.getGroupByExpressions().size();
+        double cpuCost = (groupByCount * inputStatistics.getRowCount()
+                + outputCount *  context.getStatisticsWithCheck().getRowCount());
+        double memCost = groupByCount * inputStatistics.getRowCount();
         if (aggregate.getAggPhase().isLocal()) {
-            return CostV1.of(inputStatistics.getRowCount() / beNumber,
-                    inputStatistics.getRowCount() / beNumber, 0);
+            return CostV1.of(
+                    cpuCost/ beNumber,
+                    memCost / beNumber, 0);
         } else {
             // global
-            return CostV1.of(inputStatistics.getRowCount(),
-                    inputStatistics.getRowCount(), 0);
+            return CostV1.of(cpuCost, memCost, 0);
         }
     }
 
-    private double broadCastJoinBalancePenalty(Statistics probeStats, Statistics buildStats) {
+    private double broadCastJoinBalancePenalty(List<Slot> buildSlots, Statistics probeStats, Statistics buildStats) {
         // if build side is small enough (<1M), broadcast is also good, no penalty
-        if (buildStats.computeSize() < 1024 * 1024) {
+        if (buildStats.computeSize(buildSlots) < 1024 * 1024) {
             return 1;
         }
         double broadcastJoinPenalty = (BROADCAST_JOIN_SKEW_RATIO * buildStats.getRowCount()) / probeStats.getRowCount();
@@ -276,7 +284,7 @@ class CostModelV1 extends PlanVisitor<Cost, PlanContext> {
         }
 
         if (context.isBroadcastJoin()) {
-            double broadcastJoinPenalty = broadCastJoinBalancePenalty(probeStats, buildStats);
+            double broadcastJoinPenalty = broadCastJoinBalancePenalty(physicalHashJoin.child(1).getOutput(), probeStats, buildStats);
             return CostV1.of(leftRowCount * broadcastJoinPenalty + rightRowCount + outputRowCount,
                     rightRowCount,
                     0,

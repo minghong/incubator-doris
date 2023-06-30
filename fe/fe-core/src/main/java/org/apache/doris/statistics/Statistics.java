@@ -20,9 +20,13 @@ package org.apache.doris.statistics;
 import org.apache.doris.nereids.stats.ExpressionEstimation;
 import org.apache.doris.nereids.stats.StatsMathUtil;
 import org.apache.doris.nereids.trees.expressions.Expression;
+import org.apache.doris.nereids.trees.expressions.Slot;
+
+import com.google.common.base.Preconditions;
 
 import java.text.DecimalFormat;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -149,21 +153,28 @@ public class Statistics {
         return this;
     }
 
-    private double computeTupleSize() {
+    private double computeTupleSize(List<Slot> outputs) {
         if (tupleSize <= 0) {
-            tupleSize = expressionToColumnStats.values().stream()
-                    .map(s -> s.avgSizeByte).reduce(0D, Double::sum);
-            tupleSize = Math.max(1, tupleSize);
+            tupleSize = 0;
+            for (Slot slot : outputs) {
+                ColumnStatistic colStats = expressionToColumnStats.get(slot);
+                if (colStats != null) {
+                    tupleSize += colStats.avgSizeByte;
+                } else {
+                    tupleSize += 8; // some agg output column like "sum(a), avg(b)" are not put into expressionToColumnStats
+                }
+            }
         }
+        Preconditions.checkState(tupleSize > 0, "tuple size is wrong: " + tupleSize);
         return tupleSize;
     }
 
-    public double computeSize() {
-        return computeTupleSize() * rowCount;
+    public double computeSize(List<Slot> outputs) {
+        return computeTupleSize(outputs) * rowCount;
     }
 
-    public double dataSizeFactor() {
-        return computeTupleSize() / K_BYTES;
+    public double dataSizeFactor(List<Slot> outputs) {
+        return computeSize(outputs);
     }
 
     @Override

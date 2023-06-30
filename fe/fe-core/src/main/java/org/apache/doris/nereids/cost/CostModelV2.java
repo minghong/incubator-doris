@@ -20,6 +20,7 @@ package org.apache.doris.nereids.cost;
 import org.apache.doris.nereids.PlanContext;
 import org.apache.doris.nereids.properties.DistributionSpec;
 import org.apache.doris.nereids.properties.DistributionSpecReplicated;
+import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.physical.AbstractPhysicalJoin;
 import org.apache.doris.nereids.trees.plans.physical.AbstractPhysicalSort;
@@ -47,6 +48,8 @@ import org.apache.doris.nereids.trees.plans.visitor.PlanVisitor;
 import org.apache.doris.statistics.Statistics;
 
 import com.google.common.base.Preconditions;
+
+import java.util.List;
 
 /**
  * This is a cost model to calculate the runCost and startCost of each operator
@@ -88,11 +91,11 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
 
     @Override
     public Cost visitPhysicalOlapScan(PhysicalOlapScan physicalOlapScan, PlanContext context) {
-        return calculateScanWithoutRF(context.getStatisticsWithCheck());
+        return calculateScanWithoutRF(physicalOlapScan.getOutput(), context.getStatisticsWithCheck());
     }
 
     public Cost visitPhysicalSchemaScan(PhysicalSchemaScan physicalSchemaScan, PlanContext context) {
-        return calculateScanWithoutRF(context.getStatisticsWithCheck());
+        return calculateScanWithoutRF(physicalSchemaScan.getOutput(),context.getStatisticsWithCheck());
     }
 
     @Override
@@ -101,7 +104,7 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
 
         Statistics stats = context.getStatisticsWithCheck();
 
-        double ioCost = stats.computeSize();
+        double ioCost = stats.computeSize(storageLayerAggregate.getOutput());
 
         double runCost1 = CostWeight.get().weightSum(0, ioCost, 0) / stats.getBENumber();
 
@@ -116,7 +119,7 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
 
     @Override
     public Cost visitPhysicalFileScan(PhysicalFileScan physicalFileScan, PlanContext context) {
-        return calculateScanWithoutRF(context.getStatisticsWithCheck());
+        return calculateScanWithoutRF(physicalFileScan.getOutput(), context.getStatisticsWithCheck());
     }
 
     @Override
@@ -132,12 +135,12 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
 
     @Override
     public Cost visitPhysicalJdbcScan(PhysicalJdbcScan physicalJdbcScan, PlanContext context) {
-        return calculateScanWithoutRF(context.getStatisticsWithCheck());
+        return calculateScanWithoutRF(physicalJdbcScan.getOutput(), context.getStatisticsWithCheck());
     }
 
     @Override
     public Cost visitPhysicalEsScan(PhysicalEsScan physicalEsScan, PlanContext context) {
-        return calculateScanWithoutRF(context.getStatisticsWithCheck());
+        return calculateScanWithoutRF(physicalEsScan.getOutput(), context.getStatisticsWithCheck());
     }
 
     @Override
@@ -154,7 +157,7 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
         }
 
         double startCost = runCost;
-        return new CostV2(startCost, runCost, statistics.computeSize());
+        return new CostV2(startCost, runCost, statistics.computeSize(sort.getOutput()));
     }
 
     @Override
@@ -168,13 +171,13 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
                 / statistics.getBENumber();
 
         double startCost = runCost;
-        return new CostV2(startCost, runCost, statistics.computeSize());
+        return new CostV2(startCost, runCost, statistics.computeSize(partitionTopN.getOutput()));
     }
 
     @Override
     public Cost visitPhysicalDistribute(PhysicalDistribute<? extends Plan> distribute, PlanContext context) {
         Statistics childStatistics = context.getChildStatistics(0);
-        double size = childStatistics.computeSize();
+        double size = childStatistics.computeSize(distribute.getOutput());
 
         DistributionSpec spec = distribute.getDistributionSpec();
         double netCost;
@@ -195,7 +198,7 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
         Statistics childStats = context.getChildStatistics(0);
 
         double exprCost = ExprCostModel.calculateExprCost(aggregate.getExpressions());
-        return calculateAggregate(stats, childStats, exprCost);
+        return calculateAggregate(aggregate.getOutput(), stats, childStats, exprCost);
     }
 
     @Override
@@ -214,7 +217,7 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
 
         double startCost = CostWeight.get().weightSum(buildTableCost, 0, 0);
         double runCost = CostWeight.get().weightSum(probeCost, 0, 0) / stats.getBENumber();
-        return new CostV2(startCost, runCost, rightStats.computeSize());
+        return new CostV2(startCost, runCost, rightStats.computeSize(physicalHashJoin.getOutput()));
     }
 
     @Override
@@ -233,7 +236,7 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
 
         double startCost = 0;
         double runCost = CostWeight.get().weightSum(probeCost, 0, 0) / stats.getBENumber();
-        return new CostV2(startCost, runCost, rightStats.computeSize());
+        return new CostV2(startCost, runCost, rightStats.computeSize(nestedLoopJoin.getOutput()));
     }
 
     @Override
@@ -288,9 +291,11 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
     public Cost visitPhysicalSetOperation(PhysicalSetOperation intersect, PlanContext context) {
         int rowCount = 0;
         double size = 0;
+        int i=0;
         for (Statistics childStats : context.getChildrenStatistics()) {
             rowCount += childStats.getRowCount();
-            size += childStats.computeSize();
+            size += childStats.computeSize(intersect.getChildOutput(i));
+            i++;
         }
 
         double startCost = CostWeight.get().weightSum(rowCount * HASH_COST, 0, 0);
@@ -312,20 +317,20 @@ class CostModelV2 extends PlanVisitor<Cost, PlanContext> {
         return new CostV2(startCost, runCost, 0);
     }
 
-    private CostV2 calculateScanWithoutRF(Statistics stats) {
+    private CostV2 calculateScanWithoutRF(List<Slot> output, Statistics stats) {
         //TODO: consider runtimeFilter
-        double io = stats.computeSize();
+        double io = stats.computeSize(output);
         double startCost = 0;
         double runCost = CostWeight.get().weightSum(0, io, 0) / stats.getBENumber();
         return new CostV2(startCost, runCost, 0);
     }
 
-    private CostV2 calculateAggregate(Statistics stats, Statistics childStats, double exprCost) {
+    private CostV2 calculateAggregate(List<Slot> outputSlots, Statistics stats, Statistics childStats, double exprCost) {
         // Build HashTable
         double startCost = CostWeight.get()
                 .weightSum(HASH_COST * childStats.getRowCount() + exprCost * childStats.getRowCount(), 0, 0);
         double runCost = 0;
-        return new CostV2(startCost, runCost, stats.computeSize());
+        return new CostV2(startCost, runCost, stats.computeSize(outputSlots));
     }
 
     private double getNetCost(double size) {
