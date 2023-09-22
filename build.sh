@@ -445,22 +445,18 @@ fi
 # Assesmble FE modules
 FE_MODULES=''
 BUILD_DOCS='OFF'
-modules=("")
+modules=("fe-common")
 if [[ "${BUILD_FE}" -eq 1 ]]; then
-    modules+=("fe-common")
     modules+=("fe-core")
     BUILD_DOCS='ON'
 fi
 if [[ "${BUILD_SPARK_DPP}" -eq 1 ]]; then
-    modules+=("fe-common")
     modules+=("spark-dpp")
 fi
 if [[ "${BUILD_HIVE_UDF}" -eq 1 ]]; then
-    modules+=("fe-common")
     modules+=("hive-udf")
 fi
 if [[ "${BUILD_BE_JAVA_EXTENSIONS}" -eq 1 ]]; then
-    modules+=("fe-common")
     modules+=("be-java-extensions/hudi-scanner")
     modules+=("be-java-extensions/java-common")
     modules+=("be-java-extensions/java-udf")
@@ -617,6 +613,11 @@ if [[ "${BUILD_FE}" -eq 1 ]]; then
     mkdir -p "${DORIS_OUTPUT}/fe/log"
     mkdir -p "${DORIS_OUTPUT}/fe/doris-meta"
     mkdir -p "${DORIS_OUTPUT}/fe/conf/ssl"
+
+    # make idea happy: start doris-fe from idea
+    mv "${DORIS_HOME}/fe/fe-core/target/generated-sources/annotations/*" "${DORIS_HOME}/fe/fe-core/target/generated-sources"
+    mv "${DORIS_HOME}/fe/fe-core/target/generated-sources/cup/*" "${DORIS_HOME}/fe/fe-core/target/generated-sources"
+    cp "${DORIS_OUTPUT}/fe/lib/help-resource.zip" "${DORIS_HOME}/fe/target/classes/"
 fi
 
 if [[ "${BUILD_SPARK_DPP}" -eq 1 ]]; then
