@@ -60,6 +60,7 @@ class CostModelV1 extends PlanVisitor<Cost, PlanContext> {
     static final double BROADCAST_JOIN_SKEW_RATIO = 30.0;
     static final double BROADCAST_JOIN_SKEW_PENALTY_LIMIT = 2.0;
     static final double RANDOM_SHUFFLE_TO_HASH_SHUFFLE_FACTOR = 0.1;
+    static final double JOIN_LEFT_RIGHT_DIFF_IGNORE_THRESHOLD = 10.0;
     private final int beNumber;
 
     public CostModelV1(ConnectContext connectContext) {
@@ -265,11 +266,11 @@ class CostModelV1 extends PlanVisitor<Cost, PlanContext> {
 
         double leftRowCount = probeStats.getRowCount();
         double rightRowCount = buildStats.getRowCount();
-        if (Math.abs(leftRowCount - rightRowCount) < 10) {
+        if (Math.abs(leftRowCount - rightRowCount) < JOIN_LEFT_RIGHT_DIFF_IGNORE_THRESHOLD) {
             int leftConnectivity = computeConnectivity(physicalHashJoin.left(), context);
             int rightConnectivity = computeConnectivity(physicalHashJoin.right(), context);
             if (rightConnectivity < leftConnectivity) {
-                leftRowCount += 10;
+                leftRowCount += JOIN_LEFT_RIGHT_DIFF_IGNORE_THRESHOLD;
             }
 
         }

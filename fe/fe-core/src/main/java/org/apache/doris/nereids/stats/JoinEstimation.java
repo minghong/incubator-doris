@@ -45,7 +45,7 @@ import java.util.stream.Collectors;
  */
 public class JoinEstimation {
     private static double DEFAULT_ANTI_JOIN_SELECTIVITY_COEFFICIENT = 0.3;
-    private static double UNKNOWN_COL_STATS_FILTER_SEL_LOWER_BOUND = 0.5;
+    private static double UNKNOWN_COL_STATS_FILTER_SEL_LOWER_BOUND = 0.1;
 
     private static EqualPredicate normalizeHashJoinCondition(EqualPredicate equal, Statistics leftStats,
             Statistics rightStats) {
