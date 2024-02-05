@@ -166,10 +166,13 @@ public class RuntimeFilterGenerator extends PlanPostProcessor {
                             for (RuntimeFilter rf : rfsToPushDown) {
                                 List<Plan> ancestors = rf.getBuilderNode().getAncestors();
                                 int currentAncestorsSize = ancestors.size();
-                                if (currentAncestorsSize > rightDeepAncestorsSize) {
-                                    rightDeep = rf;
-                                    rightDeepAncestorsSize = currentAncestorsSize;
-                                    rightDeepAncestors = ancestors;
+                                if (currentAncestorsSize >= rightDeepAncestorsSize) {
+                                    // in < min_max < bloom < in_or_bloom < bitmap
+                                    if (rightDeep.getType().getPrority() < rf.getType().getPrority()) {
+                                        rightDeep = rf;
+                                        rightDeepAncestorsSize = currentAncestorsSize;
+                                        rightDeepAncestors = ancestors;
+                                    }
                                 }
                                 if (currentAncestorsSize < leftTopAncestorsSize) {
                                     leftTopAncestorsSize = currentAncestorsSize;
