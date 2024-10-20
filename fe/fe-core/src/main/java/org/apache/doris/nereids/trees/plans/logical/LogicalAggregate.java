@@ -17,6 +17,7 @@
 
 package org.apache.doris.nereids.trees.plans.logical;
 
+import org.apache.doris.nereids.analyzer.Unbound;
 import org.apache.doris.nereids.memo.GroupExpression;
 import org.apache.doris.nereids.properties.DataTrait;
 import org.apache.doris.nereids.properties.LogicalProperties;
@@ -147,6 +148,10 @@ public class LogicalAggregate<CHILD_TYPE extends Plan>
         this.generated = generated;
         this.hasPushed = hasPushed;
         this.sourceRepeat = Objects.requireNonNull(sourceRepeat, "sourceRepeat cannot be null");
+        if (outputExpressions.stream().filter(ne -> !(ne instanceof Unbound)).map(ne -> ne.getExprId().asInt()).collect(Collectors.toList()).contains(279) &&
+            !child.getOutput().stream().filter(ne -> !(ne instanceof Unbound)).map(s -> s.getExprId().asInt()).collect(Collectors.toList()).contains(279)) {
+            System.out.println("eee");
+        }
     }
 
     public List<Expression> getGroupByExpressions() {

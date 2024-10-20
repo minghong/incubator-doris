@@ -597,7 +597,8 @@ public class PullUpJoinFromUnionAll extends OneRewriteRuleFactory {
             // eliminate outputs keys
             List<NamedExpression> outputExprList = new ArrayList<>();
             for (NamedExpression expr : agg.getOutputExpressions()) {
-                if (!pullTable.getOutputExprIds().contains(expr.getExprId())) {
+                if (!pullTable.getOutputExprIds().contains(((NamedExpression) expr).getExprId())
+                    || (expr instanceof SlotReference && ((SlotReference) expr).getColumn().isPresent())) {
                     outputExprList.add(expr);
                 }
             }

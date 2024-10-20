@@ -30,6 +30,7 @@ import org.apache.doris.nereids.trees.expressions.functions.scalar.EncodeAsInt;
 import org.apache.doris.nereids.trees.expressions.functions.scalar.EncodeAsLargeInt;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalAggregate;
+import org.apache.doris.nereids.trees.plans.logical.LogicalProject;
 import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.coercion.CharacterType;
 
@@ -41,6 +42,7 @@ import com.google.common.collect.Sets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * select A from T group by A
@@ -111,16 +113,20 @@ public class CompressedMaterializeGroupBy extends OneAnalysisRuleFactory {
         return encodableGroupbyExpressions;
     }
 
-    private LogicalAggregate<Plan> compressedMaterialize(LogicalAggregate<Plan> aggregate) {
-        List<Alias> encodedExpressions = Lists.newArrayList();
+    private Plan compressedMaterialize(LogicalAggregate<Plan> aggregate) {
+//        List<Alias> encodedExpressions = Lists.newArrayList();
         Map<Expression, Expression> encodableGroupByExpressions = getEncodableGroupByExpressions(aggregate);
-        if (!encodableGroupByExpressions.isEmpty()) {
+        List<Alias> encodedAlias = Lists.newArrayList();
+        if (encodableGroupByExpressions.isEmpty()) {
+            return aggregate;
+        } else {
             List<Expression> newGroupByExpressions = Lists.newArrayList();
             for (Expression gp : aggregate.getGroupByExpressions()) {
                 if (encodableGroupByExpressions.containsKey(gp)) {
                     Alias alias = new Alias(encodableGroupByExpressions.get(gp));
-                    newGroupByExpressions.add(alias);
-                    encodedExpressions.add(alias);
+                    encodedAlias.add(alias);
+                    newGroupByExpressions.add(alias.toSlot());
+//                    encodedExpressions.add(alias);
                 } else {
                     newGroupByExpressions.add(gp);
                 }
@@ -134,15 +140,28 @@ public class CompressedMaterializeGroupBy extends OneAnalysisRuleFactory {
                     Expression child = ((Alias) ne).child();
                     Preconditions.checkArgument(child instanceof SlotReference,
                             "encode %s failed, not a slot", child);
-                    newOutput.add(new Alias(((SlotReference) child).getExprId(), new AnyValue(child),
+                    newOutput.add(new Alias(ne.getExprId(), new AnyValue(child),
                             "any_value(" + child + ")"));
                 } else {
                     newOutput.add(ne);
                 }
             }
-            newOutput.addAll(encodedExpressions);
-            aggregate = aggregate.withGroupByAndOutput(newGroupByExpressions, newOutput);
+//            List<SlotReference> projections = newOutput.stream()
+//                .map(ne -> (SlotReference) ne.toSlot()).collect(Collectors.toList());
+////            newOutput.addAll(encodedExpressions);
+//            LogicalProject project = new LogicalProject(projections,
+//                aggregate.withGroupByAndOutput(newGroupByExpressions, newOutput));
+
+            List<NamedExpression> projections = Lists.newArrayList();
+            for (Slot slot : aggregate.child().getOutput()) {
+                projections.add(slot);
+            }
+            for (Alias alias : encodedAlias) {
+                projections.add(alias);
+            }
+            LogicalProject project = new LogicalProject(projections, aggregate.child());
+            return ((LogicalAggregate<Plan>) aggregate.withChildren(project)).withGroupByAndOutput(newGroupByExpressions, newOutput);
         }
-        return aggregate;
+
     }
 }
